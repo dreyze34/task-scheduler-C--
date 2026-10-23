@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/task_scheduler.dir/src/main.cpp.o CMakeFiles/task_scheduler.dir/src/Task.cpp.o CMakeFiles/task_scheduler.dir/src/TaskScheduler.cpp.o -o task_scheduler
