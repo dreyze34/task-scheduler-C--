@@ -9,7 +9,7 @@ std::shared_ptr<Task> TaskScheduler::createTask(const std::string& name) {
     return this->tasks.at(id);
 }
 
-std::shared_ptr<Task> TaskScheduler::getTask(int id) {
+std::shared_ptr<Task> TaskScheduler::getTask(int id) const {
     auto it = this->tasks.find(id);
 
     if (it != this->tasks.end()) {
@@ -45,4 +45,42 @@ void TaskScheduler::printAllTasks() const {
     for (const auto& [key, value] : this->tasks) {
         value.get()->print();
     }
+}
+
+std::vector<int> TaskScheduler::getExecutionOrder() const {
+    std::unordered_map<int, int> inDegree;
+    std::unordered_map<int, std::vector<int>> reverseDep;
+    for (const auto& [key, value] : tasks) {
+        auto dep = value->getDependencies();
+        inDegree[key] += dep.size();
+        for (const auto& d : dep) {
+            reverseDep[d->getId()].push_back(key);
+        }
+    }
+
+    std::queue<int> queue;
+    for (const auto& [key, val] : inDegree) {
+        if (val == 0) {
+            queue.push(key);
+        }
+    }
+
+    std::vector<int> res;
+    while (!queue.empty()) {
+        int curr_id = queue.front();
+        queue.pop();
+        res.push_back(curr_id);
+        for (const auto& d : reverseDep[curr_id]) {
+            inDegree[d]--;
+            if (inDegree[d] == 0) {
+                queue.push(d);
+            }
+        }
+    }
+
+    if (res.size() != tasks.size()) {
+        throw std::runtime_error("Cycle detected in task dependencies");
+    }
+
+    return res;
 }

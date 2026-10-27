@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <stack>
+#include <queue>
 #include <string>
 #include <vector>
 #include <utility>
@@ -47,11 +48,12 @@ private:
 
 public:
     std::shared_ptr<Task> createTask(const std::string& name);
-    std::shared_ptr<Task> getTask(int id);
+    std::shared_ptr<Task> getTask(int id) const;
     bool removeTask(int id);
     void executeTask(int id);
     void printAllTasks() const;
     std::vector<int> getTaskIds() const;
     bool hasTaskCycle(const std::shared_ptr<Task>& task, std::unordered_set<int>& visited) const;
     bool hasCycle() const;
+    std::vector<int> getExecutionOrder() const;
 };
