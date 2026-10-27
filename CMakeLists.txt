@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(task_scheduler
     src/main.cpp
     src/Task.cpp
+    src/TaskPrint.cpp
+    src/TaskCompute.cpp
     src/TaskScheduler.cpp
 )
 

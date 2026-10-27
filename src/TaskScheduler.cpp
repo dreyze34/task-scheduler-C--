@@ -1,13 +1,9 @@
-#include <Task.hpp>
+#include <TaskScheduler.hpp>
 
-std::shared_ptr<Task> TaskScheduler::createTask(const std::string& name) {
-    const int id = this->nextId;
+#include <queue>
+#include <stack>
+#include <stdexcept>
 
-    this->tasks[id] = std::make_shared<Task>(id, name);
-    this->nextId++;
-
-    return this->tasks.at(id);
-}
 
 std::shared_ptr<Task> TaskScheduler::getTask(int id) const {
     auto it = this->tasks.find(id);
@@ -83,4 +79,65 @@ std::vector<int> TaskScheduler::getExecutionOrder() const {
     }
 
     return res;
+}
+
+void TaskScheduler::executeAll() {
+    if (hasCycle()) {
+        throw std::runtime_error("Cycle detected in task dependencies");
+    }
+    std::vector<int> executionOrder = getExecutionOrder();
+    for (auto& taskId : executionOrder) {
+        auto task = getTask(taskId);
+        if (task->canExecute()) {
+            task->execute();
+        }
+    }
+}
+
+bool TaskScheduler::hasTaskCycle(const std::shared_ptr<Task> &task, std::unordered_set<int> &visited) const
+{
+    std::unordered_set<int> inPath;
+    std::stack<std::pair<std::shared_ptr<Task>, bool>> stack;
+    stack.push({task, false});
+    while (!stack.empty())
+    {
+        auto [curr, exiting] = std::move(stack.top());
+        auto curr_id = curr->getId();
+        stack.pop();
+        if (!exiting)
+        {
+            if (inPath.contains(curr_id))
+            {
+                return true;
+            }
+            if (visited.contains(curr_id))
+            {
+                continue;
+            }
+            inPath.insert(curr_id);
+            visited.insert(curr_id);
+            stack.push({curr, true});
+            for (const auto &dep : curr->getDependencies())
+            {
+                stack.push({dep, false});
+            }
+        }
+        else {
+            inPath.erase(curr_id);
+        }
+    }
+    return false;
+}
+
+bool TaskScheduler::hasCycle() const
+{
+    std::unordered_set<int> visited;
+    for (const auto &[key, value] : this->tasks)
+    {
+        if (!visited.contains(key) && hasTaskCycle(value, visited))
+        {
+            return true;
+        }
+    }
+    return false;
 }

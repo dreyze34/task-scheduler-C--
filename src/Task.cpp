@@ -2,7 +2,8 @@
 #include <iostream>
 #include <algorithm>
 
-#include <Task.hpp>
+#include "Task.hpp"
+
 
 Task::Task(int id, const std::string &name)
     : id(id), name(name), status(TaskStatus::PENDING) {};
@@ -32,9 +33,10 @@ void Task::setStatus(const TaskStatus newStatus)
 void Task::execute()
 {
     std::cout << "Running " << "task " << std::to_string(this->getId()) << "." << std::endl;
-    this->setStatus(TaskStatus::RUNNING);
+    setStatus(TaskStatus::RUNNING);
+    run();
     std::cout << "Task " << std::to_string(this->getId()) << " successfully finished." << std::endl;
-    this->setStatus(TaskStatus::COMPLETED);
+    setStatus(TaskStatus::COMPLETED);
 }
 
 void Task::print()
@@ -76,52 +78,4 @@ std::vector<std::shared_ptr<Task>> Task::getDependencies() const
         }
     }
     return dependencies;
-}
-
-bool TaskScheduler::hasTaskCycle(const std::shared_ptr<Task> &task, std::unordered_set<int> &visited) const
-{
-    std::unordered_set<int> inPath;
-    std::stack<std::pair<std::shared_ptr<Task>, bool>> stack;
-    stack.push({task, false});
-    while (!stack.empty())
-    {
-        auto [curr, exiting] = std::move(stack.top());
-        auto curr_id = curr->getId();
-        stack.pop();
-        if (!exiting)
-        {
-            if (inPath.contains(curr_id))
-            {
-                return true;
-            }
-            if (visited.contains(curr_id))
-            {
-                continue;
-            }
-            inPath.insert(curr_id);
-            visited.insert(curr_id);
-            stack.push({curr, true});
-            for (const auto &dep : curr->getDependencies())
-            {
-                stack.push({dep, false});
-            }
-        }
-        else {
-            inPath.erase(curr_id);
-        }
-    }
-    return false;
-}
-
-bool TaskScheduler::hasCycle() const
-{
-    std::unordered_set<int> visited;
-    for (const auto &[key, value] : this->tasks)
-    {
-        if (!visited.contains(key) && hasTaskCycle(value, visited))
-        {
-            return true;
-        }
-    }
-    return false;
 }

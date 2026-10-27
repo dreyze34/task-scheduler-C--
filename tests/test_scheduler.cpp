@@ -10,8 +10,24 @@
 #include <vector>
 
 #include "Task.hpp"
+#include "TaskScheduler.hpp"
 
 namespace {
+
+// Concrete task for testing the scheduler without adding output from run().
+class TestTask : public Task {
+public:
+    using Task::Task;
+
+    int runCount = 0;
+    TaskStatus statusDuringRun = TaskStatus::PENDING;
+
+protected:
+    void run() override {
+        ++runCount;
+        statusDuringRun = getStatus();
+    }
+};
 
 // Unlike assert(), these checks also run when NDEBUG is defined (Release builds).
 #define CHECK(expression)                                                     \
@@ -82,7 +98,7 @@ void emptyScheduler() {
 }
 
 void taskInitialState() {
-    const Task task(42, "Compile sources");
+    const TestTask task(42, "Compile sources");
     CHECK(task.getId() == 42);
     CHECK(task.getName() == "Compile sources");
     CHECK(task.getStatus() == TaskStatus::PENDING);
@@ -91,7 +107,7 @@ void taskInitialState() {
 }
 
 void taskStatusChanges() {
-    Task task(1, "Task");
+    TestTask task(1, "Task");
     for (const auto status : {TaskStatus::RUNNING, TaskStatus::COMPLETED,
                               TaskStatus::FAILED, TaskStatus::PENDING}) {
         task.setStatus(status);
@@ -101,9 +117,9 @@ void taskStatusChanges() {
 
 void createAndRetrieveTasks() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("Same name");
-    auto second = scheduler.createTask("Same name");
-    auto unnamed = scheduler.createTask("");
+    auto first = scheduler.createTask<TestTask>("Same name");
+    auto second = scheduler.createTask<TestTask>("Same name");
+    auto unnamed = scheduler.createTask<TestTask>("");
     CHECK(first != nullptr);
     CHECK(second != nullptr);
     CHECK(unnamed != nullptr);
@@ -125,7 +141,7 @@ void createAndRetrieveTasks() {
 
 void missingTaskOperations() {
     TaskScheduler scheduler;
-    auto task = scheduler.createTask("Existing");
+    auto task = scheduler.createTask<TestTask>("Existing");
     CaptureOutput output;
     for (const int id : {-1, 0, 999}) {
         CHECK(scheduler.getTask(id) == nullptr);
@@ -139,8 +155,8 @@ void missingTaskOperations() {
 
 void removeTaskAndKeepOtherTasks() {
     TaskScheduler scheduler;
-    auto removed = scheduler.createTask("Removed");
-    auto retained = scheduler.createTask("Retained");
+    auto removed = scheduler.createTask<TestTask>("Removed");
+    auto retained = scheduler.createTask<TestTask>("Retained");
     CHECK(scheduler.removeTask(removed->getId()));
     CHECK(!scheduler.removeTask(removed->getId()));
     CHECK(scheduler.getTask(removed->getId()) == nullptr);
@@ -153,10 +169,10 @@ void removeTaskAndKeepOtherTasks() {
 
 void idsAreNotReused() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("First");
-    auto second = scheduler.createTask("Second");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
     CHECK(scheduler.removeTask(second->getId()));
-    auto third = scheduler.createTask("Third");
+    auto third = scheduler.createTask<TestTask>("Third");
     CHECK(third->getId() > second->getId());
     CHECK(scheduler.getTask(first->getId()) == first);
 }
@@ -164,8 +180,8 @@ void idsAreNotReused() {
 void schedulersHaveIndependentState() {
     TaskScheduler first;
     TaskScheduler second;
-    auto a = first.createTask("A");
-    auto b = second.createTask("B");
+    auto a = first.createTask<TestTask>("A");
+    auto b = second.createTask<TestTask>("B");
     CHECK(a->getId() == b->getId());
     CHECK(a != b);
     CHECK(first.removeTask(a->getId()));
@@ -173,27 +189,32 @@ void schedulersHaveIndependentState() {
 }
 
 void taskExecution() {
-    Task task(7, "Run");
+    TestTask task(7, "Run");
     CaptureOutput output;
     task.execute();
     CHECK(task.getStatus() == TaskStatus::COMPLETED);
+    CHECK(task.runCount == 1);
+    CHECK(task.statusDuringRun == TaskStatus::RUNNING);
     CHECK(output.str() == "Running task 7.\nTask 7 successfully finished.\n");
 }
 
 void schedulerExecutesSelectedTask() {
     TaskScheduler scheduler;
-    auto selected = scheduler.createTask("Selected");
-    auto other = scheduler.createTask("Other");
+    auto selected = scheduler.createTask<TestTask>("Selected");
+    auto other = scheduler.createTask<TestTask>("Other");
     CaptureOutput output;
     scheduler.executeTask(selected->getId());
     CHECK(selected->getStatus() == TaskStatus::COMPLETED);
     CHECK(other->getStatus() == TaskStatus::PENDING);
+    CHECK(selected->runCount == 1);
+    CHECK(selected->statusDuringRun == TaskStatus::RUNNING);
+    CHECK(other->runCount == 0);
     CHECK(!output.str().empty());
 }
 
 void removedTaskIsNotExecuted() {
     TaskScheduler scheduler;
-    auto task = scheduler.createTask("Removed");
+    auto task = scheduler.createTask<TestTask>("Removed");
     CHECK(scheduler.removeTask(task->getId()));
     CaptureOutput output;
     scheduler.executeTask(task->getId());
@@ -202,7 +223,7 @@ void removedTaskIsNotExecuted() {
 }
 
 void printTask() {
-    Task task(7, "Build");
+    TestTask task(7, "Build");
     CaptureOutput output;
     task.print();
     CHECK(output.str() == "Task 7: Build\n");
@@ -210,9 +231,9 @@ void printTask() {
 
 void printAllTasks() {
     TaskScheduler scheduler;
-    scheduler.createTask("Build");
-    scheduler.createTask("Test");
-    auto removed = scheduler.createTask("Removed");
+    scheduler.createTask<TestTask>("Build");
+    scheduler.createTask<TestTask>("Test");
+    auto removed = scheduler.createTask<TestTask>("Removed");
     CHECK(scheduler.removeTask(removed->getId()));
     CaptureOutput output;
     scheduler.printAllTasks();
@@ -226,15 +247,15 @@ void printAllTasks() {
 }
 
 void nullDependencyIsIgnored() {
-    Task task(1, "Task");
+    TestTask task(1, "Task");
     task.addDependency(nullptr);
     CHECK(task.getDependencies().empty());
     CHECK(task.canExecute());
 }
 
 void dependencyStatusControlsReadiness() {
-    auto prerequisite = std::make_shared<Task>(1, "Prerequisite");
-    Task dependent(2, "Dependent");
+    auto prerequisite = std::make_shared<TestTask>(1, "Prerequisite");
+    TestTask dependent(2, "Dependent");
     dependent.addDependency(prerequisite);
     CHECK(dependent.getDependencies() == std::vector<std::shared_ptr<Task>>{prerequisite});
     for (const auto status : {TaskStatus::PENDING, TaskStatus::RUNNING, TaskStatus::FAILED}) {
@@ -248,9 +269,9 @@ void dependencyStatusControlsReadiness() {
 }
 
 void allDependenciesMustComplete() {
-    auto first = std::make_shared<Task>(1, "First");
-    auto second = std::make_shared<Task>(2, "Second");
-    Task dependent(3, "Dependent");
+    auto first = std::make_shared<TestTask>(1, "First");
+    auto second = std::make_shared<TestTask>(2, "Second");
+    TestTask dependent(3, "Dependent");
     dependent.addDependency(first);
     dependent.addDependency(second);
     CHECK((dependent.getDependencies() == std::vector<std::shared_ptr<Task>>{first, second}));
@@ -261,10 +282,10 @@ void allDependenciesMustComplete() {
 }
 
 void expiredDependencyBlocksExecution() {
-    Task dependent(2, "Dependent");
+    TestTask dependent(2, "Dependent");
     std::weak_ptr<Task> observer;
     {
-        auto prerequisite = std::make_shared<Task>(1, "Prerequisite");
+        auto prerequisite = std::make_shared<TestTask>(1, "Prerequisite");
         observer = prerequisite;
         prerequisite->setStatus(TaskStatus::COMPLETED);
         dependent.addDependency(prerequisite);
@@ -277,8 +298,8 @@ void expiredDependencyBlocksExecution() {
 
 void removingTaskReleasesSchedulerOwnership() {
     TaskScheduler scheduler;
-    auto prerequisite = scheduler.createTask("Prerequisite");
-    auto dependent = scheduler.createTask("Dependent");
+    auto prerequisite = scheduler.createTask<TestTask>("Prerequisite");
+    auto dependent = scheduler.createTask<TestTask>("Dependent");
     dependent->addDependency(prerequisite);
     const int id = prerequisite->getId();
     std::weak_ptr<Task> observer = prerequisite;
@@ -292,16 +313,16 @@ void removingTaskReleasesSchedulerOwnership() {
 
 void singleTaskGraph() {
     TaskScheduler scheduler;
-    auto task = scheduler.createTask("Single");
+    auto task = scheduler.createTask<TestTask>("Single");
     CHECK(!scheduler.hasCycle());
     CHECK(scheduler.getExecutionOrder() == std::vector<int>{task->getId()});
 }
 
 void independentTasksGraph() {
     TaskScheduler scheduler;
-    scheduler.createTask("A");
-    scheduler.createTask("B");
-    scheduler.createTask("C");
+    scheduler.createTask<TestTask>("A");
+    scheduler.createTask<TestTask>("B");
+    scheduler.createTask<TestTask>("C");
     CHECK(!scheduler.hasCycle());
     checkExecutionOrder(scheduler);
 }
@@ -309,9 +330,9 @@ void independentTasksGraph() {
 void dependencyChain() {
     TaskScheduler scheduler;
     // Create the dependent first so creation order cannot satisfy the test.
-    auto last = scheduler.createTask("Last");
-    auto middle = scheduler.createTask("Middle");
-    auto first = scheduler.createTask("First");
+    auto last = scheduler.createTask<TestTask>("Last");
+    auto middle = scheduler.createTask<TestTask>("Middle");
+    auto first = scheduler.createTask<TestTask>("First");
     last->addDependency(middle);
     middle->addDependency(first);
     CHECK(!scheduler.hasCycle());
@@ -321,10 +342,10 @@ void dependencyChain() {
 
 void diamondGraph() {
     TaskScheduler scheduler;
-    auto root = scheduler.createTask("Root");
-    auto left = scheduler.createTask("Left");
-    auto right = scheduler.createTask("Right");
-    auto leaf = scheduler.createTask("Leaf");
+    auto root = scheduler.createTask<TestTask>("Root");
+    auto left = scheduler.createTask<TestTask>("Left");
+    auto right = scheduler.createTask<TestTask>("Right");
+    auto leaf = scheduler.createTask<TestTask>("Leaf");
     left->addDependency(root);
     right->addDependency(root);
     leaf->addDependency(left);
@@ -335,19 +356,19 @@ void diamondGraph() {
 
 void disconnectedAcyclicGraph() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("First root");
-    auto second = scheduler.createTask("Second root");
-    scheduler.createTask("Isolated");
-    scheduler.createTask("First leaf")->addDependency(first);
-    scheduler.createTask("Second leaf")->addDependency(second);
+    auto first = scheduler.createTask<TestTask>("First root");
+    auto second = scheduler.createTask<TestTask>("Second root");
+    scheduler.createTask<TestTask>("Isolated");
+    scheduler.createTask<TestTask>("First leaf")->addDependency(first);
+    scheduler.createTask<TestTask>("Second leaf")->addDependency(second);
     CHECK(!scheduler.hasCycle());
     checkExecutionOrder(scheduler);
 }
 
 void duplicateDependencies() {
     TaskScheduler scheduler;
-    auto prerequisite = scheduler.createTask("Prerequisite");
-    auto dependent = scheduler.createTask("Dependent");
+    auto prerequisite = scheduler.createTask<TestTask>("Prerequisite");
+    auto dependent = scheduler.createTask<TestTask>("Dependent");
     dependent->addDependency(prerequisite);
     dependent->addDependency(prerequisite);
     CHECK(!dependent->canExecute());
@@ -359,7 +380,7 @@ void duplicateDependencies() {
 
 void selfCycle() {
     TaskScheduler scheduler;
-    auto task = scheduler.createTask("Self");
+    auto task = scheduler.createTask<TestTask>("Self");
     task->addDependency(task);
     CHECK(!task->canExecute());
     CHECK(scheduler.hasCycle());
@@ -368,8 +389,8 @@ void selfCycle() {
 
 void twoTaskCycle() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("First");
-    auto second = scheduler.createTask("Second");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
     first->addDependency(second);
     second->addDependency(first);
     CHECK(scheduler.hasCycle());
@@ -378,9 +399,9 @@ void twoTaskCycle() {
 
 void indirectCycle() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("First");
-    auto second = scheduler.createTask("Second");
-    auto third = scheduler.createTask("Third");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
+    auto third = scheduler.createTask<TestTask>("Third");
     first->addDependency(second);
     second->addDependency(third);
     third->addDependency(first);
@@ -390,11 +411,11 @@ void indirectCycle() {
 
 void disconnectedCycle() {
     TaskScheduler scheduler;
-    auto root = scheduler.createTask("Root");
-    scheduler.createTask("Leaf")->addDependency(root);
-    scheduler.createTask("Isolated");
-    auto first = scheduler.createTask("Cycle first");
-    auto second = scheduler.createTask("Cycle second");
+    auto root = scheduler.createTask<TestTask>("Root");
+    scheduler.createTask<TestTask>("Leaf")->addDependency(root);
+    scheduler.createTask<TestTask>("Isolated");
+    auto first = scheduler.createTask<TestTask>("Cycle first");
+    auto second = scheduler.createTask<TestTask>("Cycle second");
     first->addDependency(second);
     second->addDependency(first);
     CHECK(scheduler.hasCycle());
@@ -404,9 +425,9 @@ void disconnectedCycle() {
 
 void cycleReachableFromAcyclicTask() {
     TaskScheduler scheduler;
-    auto entry = scheduler.createTask("Entry");
-    auto first = scheduler.createTask("Cycle first");
-    auto second = scheduler.createTask("Cycle second");
+    auto entry = scheduler.createTask<TestTask>("Entry");
+    auto first = scheduler.createTask<TestTask>("Cycle first");
+    auto second = scheduler.createTask<TestTask>("Cycle second");
     entry->addDependency(first);
     first->addDependency(second);
     second->addDependency(first);
@@ -418,8 +439,8 @@ void cycleReachableFromAcyclicTask() {
 
 void cycleTraversalTracksVisitedTasks() {
     TaskScheduler scheduler;
-    auto root = scheduler.createTask("Root");
-    auto leaf = scheduler.createTask("Leaf");
+    auto root = scheduler.createTask<TestTask>("Root");
+    auto leaf = scheduler.createTask<TestTask>("Leaf");
     leaf->addDependency(root);
     std::unordered_set<int> visited;
     CHECK(!scheduler.hasTaskCycle(leaf, visited));
@@ -431,8 +452,8 @@ void cycleTraversalTracksVisitedTasks() {
 
 void executionOrderReflectsGraphChanges() {
     TaskScheduler scheduler;
-    auto first = scheduler.createTask("First");
-    auto second = scheduler.createTask("Second");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
     checkExecutionOrder(scheduler);
     first->addDependency(second);
     CHECK((scheduler.getExecutionOrder() == std::vector<int>{second->getId(), first->getId()}));
@@ -443,8 +464,8 @@ void executionOrderReflectsGraphChanges() {
 
 void executionOrderExcludesRemovedIndependentTask() {
     TaskScheduler scheduler;
-    auto removed = scheduler.createTask("Removed");
-    scheduler.createTask("Retained");
+    auto removed = scheduler.createTask<TestTask>("Removed");
+    scheduler.createTask<TestTask>("Retained");
     CHECK(scheduler.removeTask(removed->getId()));
     checkExecutionOrder(scheduler);
 }
@@ -453,7 +474,7 @@ void largerAcyclicGraph() {
     TaskScheduler scheduler;
     std::vector<std::shared_ptr<Task>> tasks;
     for (int index = 0; index < 128; ++index) {
-        tasks.push_back(scheduler.createTask("Task " + std::to_string(index)));
+        tasks.push_back(scheduler.createTask<TestTask>("Task " + std::to_string(index)));
     }
     for (std::size_t index = 1; index < tasks.size(); ++index) {
         tasks[index - 1]->addDependency(tasks[index]);
@@ -471,10 +492,10 @@ void largerAcyclicGraph() {
 
 void executeTasksInDependencyOrder() {
     TaskScheduler scheduler;
-    auto last = scheduler.createTask("Last");
-    auto first = scheduler.createTask("First");
-    auto left = scheduler.createTask("Left");
-    auto right = scheduler.createTask("Right");
+    auto last = scheduler.createTask<TestTask>("Last");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto left = scheduler.createTask<TestTask>("Left");
+    auto right = scheduler.createTask<TestTask>("Right");
     left->addDependency(first);
     right->addDependency(first);
     last->addDependency(left);
@@ -491,6 +512,152 @@ void executeTasksInDependencyOrder() {
     }
     CHECK(!scheduler.hasCycle());
     checkExecutionOrder(scheduler);
+}
+
+std::string taskExecutionOutput(int id) {
+    return "Running task " + std::to_string(id) + ".\nTask " +
+           std::to_string(id) + " successfully finished.\n";
+}
+
+void checkTasksExecutedOnce(const std::vector<std::shared_ptr<Task>>& tasks,
+                           const std::string& output) {
+    std::size_t expectedOutputSize = 0;
+    for (const auto& task : tasks) {
+        CHECK(task->getStatus() == TaskStatus::COMPLETED);
+        const auto trace = taskExecutionOutput(task->getId());
+        const auto position = output.find(trace);
+        CHECK(position != std::string::npos);
+        CHECK(output.find(trace, position + trace.size()) == std::string::npos);
+        expectedOutputSize += trace.size();
+        for (const auto& dependency : task->getDependencies()) {
+            const auto dependencyPosition = output.find(taskExecutionOutput(dependency->getId()));
+            CHECK(dependencyPosition != std::string::npos);
+            CHECK(dependencyPosition < position);
+        }
+    }
+    CHECK(output.size() == expectedOutputSize);
+}
+
+void executeAllEmptyScheduler() {
+    TaskScheduler scheduler;
+    CaptureOutput output;
+    scheduler.executeAll();
+    CHECK(output.str().empty());
+    CHECK(scheduler.getTaskIds().empty());
+}
+
+void executeAllSingleTask() {
+    TaskScheduler scheduler;
+    auto task = scheduler.createTask<TestTask>("Single");
+    CaptureOutput output;
+    scheduler.executeAll();
+    checkTasksExecutedOnce({task}, output.str());
+}
+
+void executeAllIndependentTasks() {
+    TaskScheduler scheduler;
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
+    auto third = scheduler.createTask<TestTask>("Third");
+    CaptureOutput output;
+    scheduler.executeAll();
+    checkTasksExecutedOnce({first, second, third}, output.str());
+}
+
+void executeAllDependencyChain() {
+    TaskScheduler scheduler;
+    // The required execution order is the reverse of creation order.
+    auto last = scheduler.createTask<TestTask>("Last");
+    auto middle = scheduler.createTask<TestTask>("Middle");
+    auto first = scheduler.createTask<TestTask>("First");
+    last->addDependency(middle);
+    middle->addDependency(first);
+    CaptureOutput output;
+    scheduler.executeAll();
+    checkTasksExecutedOnce({first, middle, last}, output.str());
+}
+
+void executeAllDiamondAndIndependentTask() {
+    TaskScheduler scheduler;
+    auto leaf = scheduler.createTask<TestTask>("Leaf");
+    auto left = scheduler.createTask<TestTask>("Left");
+    auto right = scheduler.createTask<TestTask>("Right");
+    auto root = scheduler.createTask<TestTask>("Root");
+    auto independent = scheduler.createTask<TestTask>("Independent");
+    leaf->addDependency(left);
+    leaf->addDependency(right);
+    left->addDependency(root);
+    right->addDependency(root);
+    CaptureOutput output;
+    scheduler.executeAll();
+    checkTasksExecutedOnce({leaf, left, right, root, independent}, output.str());
+}
+
+void executeAllRejectsSelfCycle() {
+    TaskScheduler scheduler;
+    auto task = scheduler.createTask<TestTask>("Self");
+    task->addDependency(task);
+    CaptureOutput output;
+    checkRuntimeError([&] { scheduler.executeAll(); });
+    CHECK(task->getStatus() == TaskStatus::PENDING);
+    CHECK(output.str().empty());
+}
+
+void executeAllRejectsDisconnectedCycleBeforeExecuting() {
+    TaskScheduler scheduler;
+    auto independent = scheduler.createTask<TestTask>("Independent");
+    auto first = scheduler.createTask<TestTask>("First");
+    auto second = scheduler.createTask<TestTask>("Second");
+    auto third = scheduler.createTask<TestTask>("Third");
+    first->addDependency(second);
+    second->addDependency(third);
+    third->addDependency(first);
+    CaptureOutput output;
+    checkRuntimeError([&] { scheduler.executeAll(); });
+    for (const auto& task : {independent, first, second, third}) {
+        CHECK(task->getStatus() == TaskStatus::PENDING);
+    }
+    CHECK(output.str().empty());
+}
+
+void executeAllSkipsBlockedTasksAndContinues() {
+    TaskScheduler scheduler;
+    auto blocked = scheduler.createTask<TestTask>("Blocked");
+    auto dependent = scheduler.createTask<TestTask>("Dependent on blocked task");
+    auto independent = scheduler.createTask<TestTask>("Independent");
+    dependent->addDependency(blocked);
+    {
+        auto expired = std::make_shared<TestTask>(100, "Expired prerequisite");
+        blocked->addDependency(expired);
+    }
+    CHECK(!blocked->canExecute());
+    CaptureOutput output;
+    scheduler.executeAll();
+    CHECK(blocked->getStatus() == TaskStatus::PENDING);
+    CHECK(dependent->getStatus() == TaskStatus::PENDING);
+    checkTasksExecutedOnce({independent}, output.str());
+}
+
+void executeAllExcludesRemovedTask() {
+    TaskScheduler scheduler;
+    auto removed = scheduler.createTask<TestTask>("Removed");
+    auto retained = scheduler.createTask<TestTask>("Retained");
+    CHECK(scheduler.removeTask(removed->getId()));
+    CaptureOutput output;
+    scheduler.executeAll();
+    CHECK(removed->getStatus() == TaskStatus::PENDING);
+    checkTasksExecutedOnce({retained}, output.str());
+}
+
+void executeAllWithDuplicateDependencies() {
+    TaskScheduler scheduler;
+    auto dependent = scheduler.createTask<TestTask>("Dependent");
+    auto prerequisite = scheduler.createTask<TestTask>("Prerequisite");
+    dependent->addDependency(prerequisite);
+    dependent->addDependency(prerequisite);
+    CaptureOutput output;
+    scheduler.executeAll();
+    checkTasksExecutedOnce({dependent, prerequisite}, output.str());
 }
 
 struct TestCase {
@@ -533,6 +700,16 @@ const TestCase tests[] = {
     {"execution order excludes removed independent task", executionOrderExcludesRemovedIndependentTask},
     {"larger acyclic graph", largerAcyclicGraph},
     {"execute tasks in dependency order", executeTasksInDependencyOrder},
+    {"executeAll on empty scheduler", executeAllEmptyScheduler},
+    {"executeAll on single task", executeAllSingleTask},
+    {"executeAll on independent tasks", executeAllIndependentTasks},
+    {"executeAll respects dependency chain", executeAllDependencyChain},
+    {"executeAll on diamond and independent task", executeAllDiamondAndIndependentTask},
+    {"executeAll rejects self cycle", executeAllRejectsSelfCycle},
+    {"executeAll rejects disconnected cycle before executing", executeAllRejectsDisconnectedCycleBeforeExecuting},
+    {"executeAll skips blocked tasks and continues", executeAllSkipsBlockedTasksAndContinues},
+    {"executeAll excludes removed task", executeAllExcludesRemovedTask},
+    {"executeAll with duplicate dependencies", executeAllWithDuplicateDependencies},
 };
 
 } // namespace
