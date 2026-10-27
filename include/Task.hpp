@@ -3,9 +3,11 @@
 #include "Task.hpp"
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
+#include <stack>
 #include <string>
 #include <vector>
-#include <string>
+#include <utility>
 
 enum class TaskStatus {
     PENDING,
@@ -50,4 +52,6 @@ public:
     void executeTask(int id);
     void printAllTasks() const;
     std::vector<int> getTaskIds() const;
+    bool hasTaskCycle(const std::shared_ptr<Task>& task, std::unordered_set<int>& visited) const;
+    bool hasCycle() const;
 };

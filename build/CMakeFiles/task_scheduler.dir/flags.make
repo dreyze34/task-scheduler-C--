@@ -6,7 +6,7 @@ CXX_DEFINES =
 
 CXX_INCLUDES = -I"/Users/adriandemarcy/3A SDI/Advanced C++/task-scheduler-C++/include"
 
-CXX_FLAGSarm64 = -std=gnu++17 -arch arm64 -Wall -Wextra -Wpedantic
+CXX_FLAGSarm64 = -std=c++20 -arch arm64 -Wall -Wextra -Wpedantic
 
-CXX_FLAGS = -std=gnu++17 -arch arm64 -Wall -Wextra -Wpedantic
+CXX_FLAGS = -std=c++20 -arch arm64 -Wall -Wextra -Wpedantic
 

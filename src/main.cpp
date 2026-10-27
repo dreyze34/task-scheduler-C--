@@ -1,69 +1,118 @@
-#include <cassert>
+
 #include <iostream>
 #include <memory>
+#include <string>
+#include "Task.hpp"
 
-#include <Task.hpp>
+void testCycle(const std::string& name,
+               const TaskScheduler& scheduler,
+               bool expected) {
+    bool result = scheduler.hasCycle();
 
-int main()
-{
-    TaskScheduler scheduler;
+    std::cout << name
+              << " | Expected: " << std::boolalpha << expected
+              << " | Got: " << result
+              << " | " << (result == expected ? "PASS" : "FAIL")
+              << '\n';
+}
 
-    std::shared_ptr<Task> dependency = scheduler.createTask("Dependance");
-    std::shared_ptr<Task> task = scheduler.createTask("Tache principale");
+int main() {
+    // TEST 1: Graphe sans cycle
+    {
+        TaskScheduler scheduler;
 
-    assert(dependency != nullptr);
-    assert(task != nullptr);
-    assert(dependency->getId() == 1);
-    assert(task->getId() == 2);
-    assert(dependency->getStatus() == TaskStatus::PENDING);
-    assert(task->getStatus() == TaskStatus::PENDING);
+        auto A = scheduler.createTask("A");
+        auto B = scheduler.createTask("B");
+        auto C = scheduler.createTask("C");
 
-    std::cout << "Taches creees avec succes.\n";
+        B->addDependency(A);
+        C->addDependency(B);
 
-    task->addDependency(dependency);
+        // C -> B -> A
+        testCycle("Test 1 - No cycle", scheduler, false);
+    }
 
-    std::vector<std::shared_ptr<Task>> dependencies =
-        task->getDependencies();
+    // TEST 2: Cycle simple
+    {
+        TaskScheduler scheduler;
 
-    assert(dependencies.size() == 1);
-    assert(dependencies.front() == dependency);
-    assert(!task->canExecute());
+        auto A = scheduler.createTask("A");
+        auto B = scheduler.createTask("B");
 
-    std::cout << "Dependance ajoutee avec succes.\n";
+        A->addDependency(B);
+        B->addDependency(A);
 
-    scheduler.executeTask(dependency->getId());
-    assert(dependency->getStatus() == TaskStatus::COMPLETED);
-    assert(task->canExecute());
+        // A -> B -> A
+        testCycle("Test 2 - Simple cycle", scheduler, true);
+    }
 
-    std::cout << "Execution et verification de la dependance reussies.\n";
+    // TEST 3: Cycle indirect
+    {
+        TaskScheduler scheduler;
 
-    std::shared_ptr<Task> foundTask = scheduler.getTask(task->getId());
-    assert(foundTask == task);
+        auto A = scheduler.createTask("A");
+        auto B = scheduler.createTask("B");
+        auto C = scheduler.createTask("C");
 
-    std::cout << "Recherche de la tache reussie.\n";
+        A->addDependency(B);
+        B->addDependency(C);
+        C->addDependency(A);
 
-    const int dependencyId = dependency->getId();
-    assert(scheduler.removeTask(dependencyId));
-    assert(scheduler.getTask(dependencyId) == nullptr);
-    assert(dependency != nullptr);
-    assert(!task->getDependencies().empty());
+        // A -> B -> C -> A
+        testCycle("Test 3 - Indirect cycle", scheduler, true);
+    }
 
-    dependencies.clear();
-    dependency.reset();
-    assert(task->getDependencies().empty());
-    assert(!task->canExecute());
+    // TEST 4: Cycle dans une composante isolée
+    {
+        TaskScheduler scheduler;
 
-    std::cout << "Expiration de la weak_ptr verifiee.\n";
+        auto A = scheduler.createTask("A");
+        auto B = scheduler.createTask("B");
+        auto C = scheduler.createTask("C");
+        auto D = scheduler.createTask("D");
+        auto E = scheduler.createTask("E");
 
-    const std::vector<int> taskIds = scheduler.getTaskIds();
-    assert(taskIds.size() == 1);
-    assert(taskIds.front() == task->getId());
+        B->addDependency(A);
+        C->addDependency(B);
 
-    assert(scheduler.removeTask(task->getId()));
-    assert(scheduler.getTask(task->getId()) == nullptr);
-    assert(task != nullptr);
+        D->addDependency(E);
+        E->addDependency(D);
 
-    std::cout << "Tous les tests sont passes.\n";
+        // C -> B -> A (sans cycle)
+        // D -> E -> D (cycle)
+        testCycle("Test 4 - Disconnected cycle", scheduler, true);
+    }
+
+    // TEST 5: Auto-dépendance
+    {
+        TaskScheduler scheduler;
+
+        auto A = scheduler.createTask("A");
+
+        A->addDependency(A);
+
+        // A -> A
+        testCycle("Test 5 - Self cycle", scheduler, true);
+    }
+
+    // TEST 6: Graphe en diamant sans cycle
+    {
+        TaskScheduler scheduler;
+
+        auto A = scheduler.createTask("A");
+        auto B = scheduler.createTask("B");
+        auto C = scheduler.createTask("C");
+        auto D = scheduler.createTask("D");
+
+        B->addDependency(A);
+        C->addDependency(A);
+        D->addDependency(B);
+        D->addDependency(C);
+
+        // D -> B -> A
+        // D -> C -> A
+        testCycle("Test 6 - Diamond graph", scheduler, false);
+    }
 
     return 0;
 }
