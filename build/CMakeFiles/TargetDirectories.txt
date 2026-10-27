@@ -1,3 +1,0 @@
-/Users/adriandemarcy/3A SDI/Advanced C++/task-scheduler-C++/build/CMakeFiles/task_scheduler.dir
-/Users/adriandemarcy/3A SDI/Advanced C++/task-scheduler-C++/build/CMakeFiles/edit_cache.dir
-/Users/adriandemarcy/3A SDI/Advanced C++/task-scheduler-C++/build/CMakeFiles/rebuild_cache.dir
